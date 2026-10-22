@@ -455,7 +455,7 @@ const QUESTIONS = [
 
 /* ============================ LOGJIKA ============================ */
 const N = QUESTIONS.length;
-const LS_KEY = "kuiz-emrat-cilesite-v2";
+const LS_KEY = "kuiz-emrat-cilesite-v3";
 const KEYS = ["A","B","C","D"];
 const app = document.getElementById("app");
 
@@ -466,17 +466,21 @@ function shuffle(arr){
   for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
   return a;
 }
-function buildPrepared(){
-  // për secilën pyetje: renditje e përzier e opsioneve + indeksi i saktë në atë renditje
-  return QUESTIONS.map(q=>{
+function buildPrepared(order){
+  // për çdo pozicion (sipas renditjes së përzier të pyetjeve): përzierje e opsioneve + indeksi i saktë
+  return order.map(origIdx=>{
+    const q = QUESTIONS[origIdx];
     const idx = shuffle([0,1,2,3]);
     const correct = idx.indexOf(q.a);
     return {order:idx, correct};
   });
 }
 function freshState(){
-  return {prepared:buildPrepared(), answers:new Array(N).fill(null), cur:0, finished:false, screen:"start"};
+  const order = shuffle(Array.from({length:N},(_,i)=>i)); // renditje e rastësishme e pyetjeve
+  return {order, prepared:buildPrepared(order), answers:new Array(N).fill(null), cur:0, finished:false, screen:"start"};
 }
+// pyetja që ndodhet në pozicionin p (sipas renditjes së përzier të këtij sesioni)
+function qAt(p){ return QUESTIONS[state.order[p]]; }
 function save(){
   try{localStorage.setItem(LS_KEY, JSON.stringify(state));}catch(e){}
 }
@@ -485,7 +489,8 @@ function load(){
     const raw = localStorage.getItem(LS_KEY);
     if(!raw) return null;
     const s = JSON.parse(raw);
-    if(s && Array.isArray(s.answers) && s.answers.length===N && Array.isArray(s.prepared) && s.prepared.length===N) return s;
+    if(s && Array.isArray(s.answers) && s.answers.length===N && Array.isArray(s.prepared) && s.prepared.length===N
+       && Array.isArray(s.order) && s.order.length===N) return s;
   }catch(e){}
   return null;
 }
@@ -534,6 +539,7 @@ function renderStart(){
         <li>Në fund del rezultati: ${N} numra; numrat e gabuar me <b style="color:var(--wrong)">të kuqe</b>, të saktët me <b style="color:var(--correct)">të gjelbër</b>.</li>
         <li>Prek çdo numër për të parë pyetjen: zgjedhja jote e gabuar del me të kuqe, e sakta me të gjelbër.</li>
         <li>Mund të lëvizësh para/mbrapa dhe të kërcesh te çdo pyetje.</li>
+        <li><b style="color:var(--gold)">Renditja e pyetjeve dhe e opsioneve është e rastësishme</b> — ndryshon sa herë fillon kuizin.</li>
       </ul>
       <div class="actions">
         <button class="btn" id="startBtn">${resumable?"Vazhdo kuizin":"Fillo kuizin"}</button>
@@ -551,7 +557,7 @@ function renderStart(){
 }
 
 function renderQuiz(){
-  const i=state.cur, q=QUESTIONS[i], prep=state.prepared[i];
+  const i=state.cur, q=qAt(i), prep=state.prepared[i];
   const answered=state.answers.filter(a=>a!==null).length;
   const pct=Math.round(((i)/N)*100);
   const optsHtml = prep.order.map((origIdx,pos)=>{
@@ -609,7 +615,7 @@ function renderQuiz(){
 }
 
 function showExplanation(i){
-  const q=QUESTIONS[i], prep=state.prepared[i];
+  const q=qAt(i), prep=state.prepared[i];
   // gjej shkronjën/tekstin e opsionit të saktë në renditjen e shfaqur
   const pos = prep.correct;
   const origIdx = prep.order[pos];
@@ -637,7 +643,7 @@ function toggleJump(){
   const w=document.getElementById("jumpWrap");
   if(!w) return;
   if(!w.hidden){w.hidden=true;return;}
-  const cells = QUESTIONS.map((q,k)=>{
+  const cells = state.prepared.map((_,k)=>{
     const ans = state.answers[k]!==null;
     const cur = k===state.cur;
     return `<button class="cell ${ans?"answered":""} ${cur?"current":""}" data-k="${k}">${k+1}</button>`;
@@ -671,9 +677,9 @@ let revFilter="all";
 function renderResult(){
   const s=score();
   const pct=Math.round((s.correct/N)*100);
-  const cells = QUESTIONS.map((q,k)=>{
+  const cells = state.prepared.map((_,k)=>{
     const a=state.answers[k];
-    let cls="blank", lab=(k+1);
+    let cls="blank";
     if(a!==null){ cls = (a===state.prepared[k].correct)?"correct":"wrong"; }
     return `<button class="cell ${cls}" data-k="${k}" aria-label="Pyetja ${k+1}">${k+1}</button>`;
   }).join("");
@@ -715,7 +721,7 @@ function renderResult(){
 
   const reviewEl=document.getElementById("review");
   function revCard(k){
-    const q=QUESTIONS[k], prep=state.prepared[k], a=state.answers[k];
+    const q=qAt(k), prep=state.prepared[k], a=state.answers[k];
     const isCorrect = a!==null && a===prep.correct;
     const badge = a===null?`<span class="rev-badge sk">Pa përgjigje</span>`
                  : isCorrect?`<span class="rev-badge ok">Saktë</span>`
